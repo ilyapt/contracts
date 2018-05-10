@@ -11,53 +11,37 @@ contract OptionSale {
     address factory;
     address startup;
     bool closed = false;
-    uint256 public optionRate;
-    uint256 public openingTime;
-    uint256 public closingTime;
+    uint256 public optionPrice;
+    uint256 public closingSaleTime;
     OptionToken public option;
-    ERC20 public erc20;
-    address public tokenHolder;
-    bool public mintable;
-    bool public burnable;
-    uint256 tokenRate;
-    uint256 buyoutTime;
-    uint256 burningTime;
+    _ERC20 public erc20;
+    uint256 decimalPower;
 
-	function OptionSale (
+    function OptionSale (
         address _startup,
-        uint256 _optionRate,
-        uint256 _openingTime,
-        uint256 _closingTime,
+        uint256 _optionPrice,
+        uint256 _closingSaleTime,
         address _ercToken,
-        uint256 _tokenRate,
-        bool _mintable,
-        bool _burnable,
-        address _tokenHolder,
-        uint256 _buyoutTime,
+        uint256 _strikePrice,
         uint256 _burningTime
         ) public
     {
-        require(_closingTime > _openingTime);
-        require(_buyoutTime >= _openingTime);
-        require(_burningTime > _buyoutTime && _burningTime > _closingTime);
-
         factory = msg.sender;
         startup = _startup;
-        optionRate = _optionRate;
-        openingTime = _openingTime;
-        closingTime = _closingTime;
-        erc20 = ERC20(_ercToken);
-        tokenHolder = _tokenHolder;
-        mintable = _mintable;
-        burnable = _burnable;
-        tokenRate = _tokenRate;
-        buyoutTime = _buyoutTime;
-        burningTime = _burningTime;
-	}
+        optionPrice = _optionPrice;
+        closingSaleTime = _closingSaleTime;
+        erc20 = _ERC20(_ercToken);
+        decimalPower = SafeDecimalsCalc(erc20.decimals());
+        option = new OptionToken(startup, address(erc20), _strikePrice, _burningTime);
+    }
 
-    modifier onlyFactory {
-        require(msg.sender == factory);
-        _;
+    function SafeDecimalsCalc(uint256 decimals) private pure returns (uint256 result)
+    {
+        result = 1;
+        for (uint256 i = 0; i < decimals; i++){
+            result *= 10;
+            assert(result >= 10);
+        }
     }
 
     modifier onlyStartup {
@@ -66,48 +50,35 @@ contract OptionSale {
     }
 
     modifier onlyWhileOpen {
-        require(address(option) != 0x0 && !closed && now >= openingTime && now <= closingTime);
+        require(now <= closingSaleTime);
         _;
     }
 
-    function open(string name, string symbol, uint8 decimals) public onlyFactory {
-        require(address(option) == 0x0);
-        option = new OptionToken(startup, name, symbol, decimals, address(erc20), tokenRate, buyoutTime, burningTime);
-    }
-
     function () public payable onlyWhileOpen {
-        uint optionCount = msg.value.mul(optionRate);
+        uint optionCount = msg.value.mul(decimalPower).div(optionPrice);
 
-        if (mintable) {
-            MintableToken t = MintableToken(address(erc20));
-            t.mint(option, optionCount);
-
-        } else if (tokenHolder != address(0)) {
-            require(erc20.allowance(tokenHolder, this) >= optionCount);
-            erc20.transferFrom(tokenHolder, option, optionCount);
-
-        } else {
-            require(erc20.balanceOf(this) >= optionCount);
+        if (erc20.balanceOf(address(this)) >= optionCount) {
             erc20.transfer(option, optionCount);
-            
+            option.mint(msg.sender, optionCount);
+        } else if(erc20.allowance(startup, address(this)) >= optionCount) {
+            erc20.transferFrom(startup, option, optionCount);
+            option.mint(msg.sender, optionCount);
+        } else {
+            revert();
         }
-
-        option.mint(msg.sender, optionCount);
     }
 
     function withdraw() public onlyStartup {
-        startup.transfer(this.balance);
+        startup.transfer(address(this).balance);
     }
 
     function close() public onlyStartup {
-        if (!mintable && tokenHolder == 0x0) {
-            if (burnable) {
-                BurnableToken t = BurnableToken(address(erc20));
-                t.burn(erc20.balanceOf(this));
-            } else {
-                erc20.transfer(startup, erc20.balanceOf(this));
-            }
+        uint256 extra = erc20.balanceOf(address(this));
+        if (extra > 0) {
+            erc20.transfer(startup, extra);
         }
+        startup.transfer(address(this).balance);
         closed = true;
     }
 }
+

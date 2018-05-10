@@ -5,7 +5,7 @@ import "./OptionHub.sol";
 
 contract OptionFactory {
     address admin;
-    OptionHub hub;
+    OptionHub public hub;
 
     function OptionFactory(address _hub) public {
         admin = msg.sender;
@@ -13,38 +13,22 @@ contract OptionFactory {
     }
 
     function newOptionSale (
-        uint256 optionRate,
-        uint256 openingTime,
-        uint256 closingTime,
-        address ercToken,
-        uint256 tokenRate,
-        bool mintable,
-        bool burnable,
-        address tokenHolder,
-        uint256 buyoutTime,
-        uint256 burningTime
-        ) public returns(address)
+        uint256 _optionPrice,
+        uint256 _closingSaleTime,
+        address _ercToken,
+        uint256 _strikePrice,
+        uint256 _burningTime
+    ) public returns(address)
     {
         OptionSale sale = new OptionSale(
             msg.sender,
-            optionRate,
-            openingTime,
-            closingTime,
-            ercToken,
-            tokenRate,
-            mintable,
-            burnable,
-            tokenHolder,
-            buyoutTime,
-            burningTime
+            _optionPrice,
+            _closingSaleTime,
+            _ercToken,
+            _strikePrice,
+            _burningTime
         );
-        return address(sale);
-    }
-    
-    function open(address sale, string name, string symbol, uint8 decimals) public {
-        require(msg.sender == admin);
-        OptionSale s = OptionSale(sale);
-        s.open(name, symbol, decimals);
         hub.addOption(sale);
+        return sale;
     }
 }
